@@ -13,15 +13,31 @@ from datetime import datetime
 from tkinter import *
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 
+# Para Windows: ocultar ventana de consola
+if sys.platform == 'win32':
+    STARTUPINFO = subprocess.STARTUPINFO()
+    STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    STARTUPINFO.wShowWindow = subprocess.SW_HIDE
+else:
+    STARTUPINFO = None
+
 CONFIG_FILE = "git_config.json"
+HISTORIAL_FILE = "historial_proyectos.txt"
+PROYECTOS_FILE = "proyectos_guardados.json"
 
 
 def ejecutar_comando(comando):
-    """Ejecuta un comando y retorna el resultado"""
+    """Ejecuta un comando en segundo plano sin mostrar ventana de consola"""
     try:
         resultado = subprocess.run(
-            comando, shell=True, capture_output=True, text=True,
-            encoding='utf-8', errors='ignore'
+            comando, 
+            shell=True, 
+            capture_output=True, 
+            text=True,
+            encoding='utf-8', 
+            errors='ignore',
+            startupinfo=STARTUPINFO,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
         )
         salida = resultado.stdout.strip() if resultado.stdout else ""
         error = resultado.stderr.strip() if resultado.stderr else ""
@@ -79,6 +95,85 @@ def cargar_configuracion():
         return {}
 
 
+def guardar_proyecto(ruta, url_remoto=None):
+    """Guarda un proyecto en el historial con seguridad"""
+    try:
+        # Cargar proyectos existentes
+        proyectos = {}
+        if os.path.exists(PROYECTOS_FILE):
+            try:
+                with open(PROYECTOS_FILE, 'r', encoding='utf-8') as f:
+                    proyectos = json.load(f)
+            except:
+                proyectos = {}
+        
+        # Validar que la ruta existe (seguridad)
+        if not os.path.exists(ruta):
+            return False
+        
+        # Normalizar ruta para evitar duplicados
+        ruta_normalizada = os.path.normpath(ruta)
+        
+        # Guardar proyecto
+        proyectos[ruta_normalizada] = {
+            'ruta': ruta_normalizada,
+            'url_remoto': url_remoto,
+            'fecha_ultimo_acceso': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'fecha_creacion': proyectos.get(ruta_normalizada, {}).get('fecha_creacion', 
+                          datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        }
+        
+        # Guardar en JSON (estructurado)
+        with open(PROYECTOS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(proyectos, f, indent=4, ensure_ascii=False)
+        
+        # Guardar en TXT (historial legible)
+        with open(HISTORIAL_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Proyecto: {ruta_normalizada}\n")
+            if url_remoto:
+                f.write(f"  Remoto: {url_remoto}\n")
+            f.write("\n")
+        
+        return True
+    except Exception as e:
+        return False
+
+
+def cargar_proyectos():
+    """Carga todos los proyectos guardados"""
+    if not os.path.exists(PROYECTOS_FILE):
+        return {}
+    try:
+        with open(PROYECTOS_FILE, 'r', encoding='utf-8') as f:
+            proyectos = json.load(f)
+            # Validar que las rutas aún existen (seguridad)
+            proyectos_validos = {}
+            for ruta, datos in proyectos.items():
+                if os.path.exists(ruta):
+                    proyectos_validos[ruta] = datos
+            return proyectos_validos
+    except:
+        return {}
+
+
+def obtener_ultimo_proyecto():
+    """Obtiene el último proyecto usado"""
+    proyectos = cargar_proyectos()
+    if not proyectos:
+        return None
+    
+    # Ordenar por fecha de último acceso
+    proyectos_ordenados = sorted(
+        proyectos.items(),
+        key=lambda x: x[1].get('fecha_ultimo_acceso', ''),
+        reverse=True
+    )
+    
+    if proyectos_ordenados:
+        return proyectos_ordenados[0][1]  # Retorna datos del más reciente
+    return None
+
+
 class GitAutomationGUI:
     def __init__(self, root):
         self.root = root
@@ -94,8 +189,18 @@ class GitAutomationGUI:
         
         self.crear_interfaz()
         
-        # SIEMPRE pedir la carpeta del proyecto del usuario al iniciar
-        self.seleccionar_carpeta_proyecto_inicio()
+        # Intentar cargar último proyecto usado
+        ultimo_proyecto = obtener_ultimo_proyecto()
+        if ultimo_proyecto:
+            self.ruta_proyecto_usuario = ultimo_proyecto['ruta']
+            self.ruta_proyecto.set(ultimo_proyecto['ruta'])
+            if ultimo_proyecto.get('url_remoto'):
+                self.url_remoto.set(ultimo_proyecto['url_remoto'])
+            self.log(f"✓ Proyecto cargado: {ultimo_proyecto['ruta']}", "success")
+            self.mostrar_interfaz_principal()
+        else:
+            # Si no hay proyecto guardado, pedir selección
+            self.seleccionar_carpeta_proyecto_inicio()
     
     def crear_interfaz(self):
         """Crea la interfaz"""
@@ -158,6 +263,59 @@ class GitAutomationGUI:
             font=("Arial", 10, "bold"),
             fg="#d32f2f"
         ).pack(anchor=W, pady=(0, 10))
+        
+        # Verificar si hay proyectos guardados
+        proyectos = cargar_proyectos()
+        
+        # Mostrar proyectos guardados si existen
+        if proyectos:
+            proyectos_frame = Frame(main_select_frame, bg="#f5f5f5", relief=SOLID, borderwidth=1)
+            proyectos_frame.pack(fill=X, pady=(0, 15))
+            
+            Label(
+                proyectos_frame,
+                text="📚 Proyectos guardados anteriormente:",
+                font=("Arial", 9, "bold"),
+                bg="#f5f5f5"
+            ).pack(anchor=W, padx=10, pady=(10, 5))
+            
+            # Lista de proyectos (máximo 5 más recientes)
+            proyectos_ordenados = sorted(
+                proyectos.items(),
+                key=lambda x: x[1].get('fecha_ultimo_acceso', ''),
+                reverse=True
+            )[:5]
+            
+            for ruta_proy, datos_proy in proyectos_ordenados:
+                btn_proy = Button(
+                    proyectos_frame,
+                    text=f"📁 {os.path.basename(ruta_proy)}",
+                    command=lambda r=ruta_proy: self.seleccionar_proyecto_guardado(r),
+                    bg="#e3f2fd",
+                    fg="#1976d2",
+                    font=("Arial", 9),
+                    anchor=W,
+                    padx=10,
+                    pady=5,
+                    cursor="hand2"
+                )
+                btn_proy.pack(fill=X, padx=10, pady=2)
+                
+                Label(
+                    proyectos_frame,
+                    text=f"   {ruta_proy}",
+                    font=("Arial", 8),
+                    bg="#f5f5f5",
+                    fg="#666"
+                ).pack(anchor=W, padx=20, pady=(0, 5))
+            
+            Label(
+                proyectos_frame,
+                text="O selecciona una carpeta nueva:",
+                font=("Arial", 9, "italic"),
+                bg="#f5f5f5",
+                fg="#666"
+            ).pack(anchor=W, padx=10, pady=(5, 10))
         
         Label(
             main_select_frame,
@@ -270,9 +428,23 @@ class GitAutomationGUI:
             messagebox.showerror("Error", "La carpeta seleccionada no existe")
             return
         
+        # Validación de seguridad: verificar que es una carpeta válida
+        if not os.path.isdir(ruta):
+            messagebox.showerror("Error", "La ruta seleccionada no es una carpeta válida")
+            return
+        
         self.ruta_proyecto_usuario = ruta
         os.chdir(ruta)
+        
+        # Guardar proyecto en historial
+        url = self.url_remoto.get().strip()
+        if url and url != "https://github.com/usuario/repositorio.git":
+            guardar_proyecto(ruta, url)
+        else:
+            guardar_proyecto(ruta)
+        
         self.log(f"\n✓ Carpeta seleccionada: {ruta}", "success")
+        self.log("✓ Proyecto guardado en historial", "success")
         self.mostrar_interfaz_principal()
     
     def buscar_carpeta(self):
@@ -282,8 +454,38 @@ class GitAutomationGUI:
             initialdir=os.path.expanduser("~")
         )
         if carpeta:
+            # Validación de seguridad
+            if not os.path.isdir(carpeta):
+                messagebox.showerror("Error", "La ruta seleccionada no es una carpeta válida")
+                return
             self.ruta_proyecto.set(carpeta)
             self.log(f"✓ Carpeta seleccionada: {carpeta}", "success")
+    
+    def seleccionar_proyecto_guardado(self, ruta):
+        """Selecciona un proyecto del historial"""
+        # Validación de seguridad
+        if not os.path.exists(ruta):
+            messagebox.showerror("Error", "El proyecto ya no existe en esa ubicación")
+            return
+        
+        if not os.path.isdir(ruta):
+            messagebox.showerror("Error", "La ruta no es una carpeta válida")
+            return
+        
+        self.ruta_proyecto.set(ruta)
+        self.ruta_proyecto_usuario = ruta
+        os.chdir(ruta)
+        
+        # Cargar datos del proyecto
+        proyectos = cargar_proyectos()
+        if ruta in proyectos and proyectos[ruta].get('url_remoto'):
+            self.url_remoto.set(proyectos[ruta]['url_remoto'])
+        
+        # Actualizar fecha de acceso
+        guardar_proyecto(ruta, proyectos.get(ruta, {}).get('url_remoto'))
+        
+        self.log(f"\n✓ Proyecto cargado: {ruta}", "success")
+        self.mostrar_interfaz_principal()
     
     def actualizar_automatico(self):
         """Actualiza todo automáticamente con explicaciones paso a paso"""
@@ -365,6 +567,9 @@ class GitAutomationGUI:
             'ruta_proyecto': ruta
         })
         
+        # Guardar proyecto en historial
+        guardar_proyecto(ruta, url)
+        
         self.log("\n" + "="*60, "success")
         self.log("✅ ¡CONFIGURACIÓN COMPLETADA!", "success")
         self.log("="*60, "success")
@@ -378,6 +583,36 @@ class GitAutomationGUI:
         
         # Mostrar interfaz principal
         self.mostrar_interfaz_principal()
+    
+    def consultar_estado_git(self):
+        """Consulta el estado de Git para ver qué hay configurado"""
+        ruta = self.ruta_proyecto_usuario or os.getcwd()
+        
+        # Verificar si es un repositorio Git
+        if os.path.exists(os.path.join(ruta, ".git")):
+            self.log("✓ Repositorio Git detectado", "success")
+            
+            # Consultar remoto
+            exito, remotos, _ = ejecutar_comando("git remote -v")
+            if exito and remotos.strip():
+                self.log(f"✓ Remoto configurado: {remotos.split()[1] if remotos else 'N/A'}", "success")
+            else:
+                self.log("⚠ No hay remoto configurado", "warning")
+            
+            # Consultar rama actual
+            exito, rama, _ = ejecutar_comando("git branch --show-current")
+            if exito and rama.strip():
+                self.log(f"✓ Rama actual: {rama.strip()}", "success")
+            
+            # Consultar cambios pendientes
+            exito, cambios, _ = ejecutar_comando("git status --porcelain")
+            if exito and cambios.strip():
+                num_cambios = len(cambios.strip().split('\n'))
+                self.log(f"ℹ {num_cambios} archivo(s) con cambios pendientes", "info")
+            else:
+                self.log("ℹ No hay cambios pendientes", "info")
+        else:
+            self.log("⚠ No es un repositorio Git (se inicializará automáticamente)", "warning")
     
     def mostrar_interfaz_principal(self):
         """Interfaz principal simplificada"""
@@ -395,15 +630,17 @@ class GitAutomationGUI:
         else:
             self.log("⚠ Sin conexión a GitHub (puedes trabajar localmente)", "warning")
         
+        # Consultar Git para ver qué hay configurado
+        self.consultar_estado_git()
+        
         # Frame de información
         info_frame = Frame(self.btn_frame, bg="#e3f2fd", relief=SOLID, borderwidth=1)
         info_frame.pack(pady=(0, 15), fill=X)
         
         info_text = (
-            "💡 Este botón hace TODO automáticamente:\n"
-            "• Agrega TODOS los archivos de tu proyecto\n"
-            "• Guarda los cambios con un mensaje (te preguntará)\n"
-            "• Sube todo a GitHub (si confirmas)"
+            "💡 ¿Qué hace cada botón?\n"
+            "• Botón AZUL: Agrega TODOS los archivos, guarda y sube\n"
+            "• Botón NARANJA: Selecciona archivos específicos que tú elijas"
         )
         
         Label(
@@ -415,7 +652,7 @@ class GitAutomationGUI:
             justify=LEFT
         ).pack(padx=10, pady=8, anchor=W)
         
-        # UN SOLO BOTÓN PRINCIPAL - hace todo
+        # Botón principal - TODOS los archivos
         btn_principal = Button(
             self.btn_frame,
             text="🔄 TODOS LOS ARCHIVOS\n(Agregar + Guardar + Subir)",
@@ -428,7 +665,22 @@ class GitAutomationGUI:
             cursor="hand2",
             justify=CENTER
         )
-        btn_principal.pack(pady=15)
+        btn_principal.pack(pady=10)
+        
+        # Botón secundario - Archivos específicos
+        btn_especificos = Button(
+            self.btn_frame,
+            text="➕ SELECCIONAR ARCHIVOS ESPECÍFICOS\n(Solo los que tú elijas)",
+            command=self.seleccionar_archivos_especificos,
+            bg="#FF9800",
+            fg="white",
+            font=("Arial", 11, "bold"),
+            padx=30,
+            pady=12,
+            cursor="hand2",
+            justify=CENTER
+        )
+        btn_especificos.pack(pady=5)
     
     
     def actualizar_automatico(self):
@@ -569,6 +821,140 @@ class GitAutomationGUI:
         
         dialog.wait_window()
         return resultado[0]
+    
+    def seleccionar_archivos_especificos(self):
+        """Permite seleccionar archivos específicos para agregar"""
+        # Verificar que hay una carpeta seleccionada
+        if not self.ruta_proyecto_usuario:
+            ruta = self.ruta_proyecto.get().strip()
+            if not ruta or not os.path.exists(ruta):
+                messagebox.showerror("Error", "Debes seleccionar la carpeta de tu proyecto primero")
+                self.seleccionar_carpeta_proyecto_inicio()
+                return
+            self.ruta_proyecto_usuario = ruta
+        
+        os.chdir(self.ruta_proyecto_usuario)
+        
+        # Obtener lista de archivos modificados
+        exito, cambios, _ = ejecutar_comando("git status --porcelain")
+        if not exito or not cambios.strip():
+            messagebox.showinfo("Info", "No hay archivos modificados para seleccionar")
+            return
+        
+        # Crear ventana de selección
+        dialog = Toplevel(self.root)
+        dialog.title("📁 Seleccionar Archivos Específicos")
+        dialog.geometry("600x500")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Centrar ventana
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (500 // 2)
+        dialog.geometry(f"600x500+{x}+{y}")
+        
+        Label(dialog, text="📁 Selecciona los archivos que quieres agregar:", 
+              font=("Arial", 12, "bold")).pack(pady=(15, 10))
+        
+        # Frame con scrollbar para la lista
+        frame_lista = Frame(dialog)
+        frame_lista.pack(fill=BOTH, expand=True, padx=20, pady=10)
+        
+        scrollbar = Scrollbar(frame_lista)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        lista_archivos = Listbox(frame_lista, selectmode=MULTIPLE, 
+                                font=("Consolas", 9), yscrollcommand=scrollbar.set)
+        lista_archivos.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.config(command=lista_archivos.yview)
+        
+        # Agregar archivos a la lista
+        archivos_lista = []
+        for linea in cambios.strip().split('\n'):
+            if linea.strip():
+                archivo = linea[3:].strip()  # Quitar el estado (M, A, etc.)
+                archivos_lista.append(archivo)
+                lista_archivos.insert(END, archivo)
+        
+        # Seleccionar todos por defecto
+        for i in range(len(archivos_lista)):
+            lista_archivos.selection_set(i)
+        
+        resultado = [None]
+        
+        def aceptar():
+            seleccionados = [lista_archivos.get(i) for i in lista_archivos.curselection()]
+            if seleccionados:
+                resultado[0] = seleccionados
+                dialog.destroy()
+            else:
+                messagebox.showwarning("Advertencia", "Debes seleccionar al menos un archivo")
+        
+        def cancelar():
+            resultado[0] = None
+            dialog.destroy()
+        
+        # Botones
+        btn_frame = Frame(dialog)
+        btn_frame.pack(pady=15)
+        
+        Button(btn_frame, text="✓ Agregar Seleccionados", command=aceptar, 
+               bg="#4caf50", fg="white", font=("Arial", 11, "bold"), 
+               padx=20, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        Button(btn_frame, text="✗ Cancelar", command=cancelar, 
+               bg="#f44336", fg="white", font=("Arial", 10), 
+               padx=20, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        dialog.wait_window()
+        
+        if resultado[0]:
+            self.log("\n" + "="*60, "info")
+            self.log("➕ AGREGANDO ARCHIVOS ESPECÍFICOS", "info")
+            self.log("="*60, "info")
+            self.log(f"\n📁 Archivos seleccionados: {len(resultado[0])}", "info")
+            
+            # Agregar cada archivo seleccionado
+            for archivo in resultado[0]:
+                self.log(f"   Agregando: {archivo}", "info")
+                ejecutar_comando(f'git add "{archivo}"')
+            
+            self.log("\n✓ Archivos agregados", "success")
+            
+            # Preguntar si hacer commit
+            respuesta = messagebox.askyesno(
+                "¿Guardar cambios?",
+                f"¿Deseas guardar estos {len(resultado[0])} archivo(s) con un commit?"
+            )
+            
+            if respuesta:
+                mensaje = self.pedir_mensaje_commit()
+                if mensaje:
+                    self.log(f"\n💾 Guardando con mensaje: {mensaje}", "info")
+                    exito, _, error = ejecutar_comando(f'git commit -m "{mensaje}"')
+                    if exito:
+                        self.log("✓ Cambios guardados", "success")
+                        
+                        # Preguntar push
+                        config = cargar_configuracion()
+                        if config.get('url_remoto'):
+                            respuesta_push = messagebox.askyesno(
+                                "¿Subir a GitHub?",
+                                "¿Deseas subir estos cambios a GitHub?"
+                            )
+                            if respuesta_push:
+                                self.log("\n☁️ Subiendo a GitHub...", "info")
+                                exito, _, _ = ejecutar_comando("git push origin main")
+                                if not exito:
+                                    exito, _, _ = ejecutar_comando("git push origin master")
+                                if exito:
+                                    self.log("✓ Cambios subidos", "success")
+                    else:
+                        self.log(f"✗ Error: {error}", "error")
+            
+            self.log("\n" + "="*60, "success")
+            self.log("✅ ¡COMPLETADO!", "success")
+            self.log("="*60, "success")
 
 
 def main():
