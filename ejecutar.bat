@@ -1,5 +1,5 @@
 @echo off
-REM Script para ejecutar el sistema de automatización de Git
+REM Script para ejecutar el sistema de automatización de Git (sin mostrar consola)
 cd /d "%~dp0"
 call venv\Scripts\activate.bat
-start "" /B python git_automation_gui.py
+pythonw git_automation_gui.py

@@ -823,7 +823,7 @@ class GitAutomationGUI:
         return resultado[0]
     
     def seleccionar_archivos_especificos(self):
-        """Permite seleccionar archivos específicos para agregar"""
+        """Permite seleccionar archivos específicos para agregar con checkboxes"""
         # Verificar que hay una carpeta seleccionada
         if not self.ruta_proyecto_usuario:
             ruta = self.ruta_proyecto.get().strip()
@@ -841,50 +841,98 @@ class GitAutomationGUI:
             messagebox.showinfo("Info", "No hay archivos modificados para seleccionar")
             return
         
-        # Crear ventana de selección
+        # Crear ventana de selección más grande
         dialog = Toplevel(self.root)
         dialog.title("📁 Seleccionar Archivos Específicos")
-        dialog.geometry("600x500")
+        dialog.geometry("800x600")
         dialog.transient(self.root)
         dialog.grab_set()
         
         # Centrar ventana
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (500 // 2)
-        dialog.geometry(f"600x500+{x}+{y}")
+        x = (dialog.winfo_screenwidth() // 2) - (800 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (600 // 2)
+        dialog.geometry(f"800x600+{x}+{y}")
         
+        # Título
         Label(dialog, text="📁 Selecciona los archivos que quieres agregar:", 
-              font=("Arial", 12, "bold")).pack(pady=(15, 10))
+              font=("Arial", 14, "bold")).pack(pady=(20, 15))
         
-        # Frame con scrollbar para la lista
-        frame_lista = Frame(dialog)
-        frame_lista.pack(fill=BOTH, expand=True, padx=20, pady=10)
+        # Frame principal con scrollbar
+        main_frame = Frame(dialog)
+        main_frame.pack(fill=BOTH, expand=True, padx=20, pady=10)
         
-        scrollbar = Scrollbar(frame_lista)
-        scrollbar.pack(side=RIGHT, fill=Y)
+        # Canvas para scroll
+        canvas = Canvas(main_frame, bg="white")
+        scrollbar = Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = Frame(canvas)
         
-        lista_archivos = Listbox(frame_lista, selectmode=MULTIPLE, 
-                                font=("Consolas", 9), yscrollcommand=scrollbar.set)
-        lista_archivos.pack(side=LEFT, fill=BOTH, expand=True)
-        scrollbar.config(command=lista_archivos.yview)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         
-        # Agregar archivos a la lista
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Agregar archivos con checkboxes
         archivos_lista = []
+        checkboxes_vars = {}
+        
         for linea in cambios.strip().split('\n'):
             if linea.strip():
                 archivo = linea[3:].strip()  # Quitar el estado (M, A, etc.)
                 archivos_lista.append(archivo)
-                lista_archivos.insert(END, archivo)
+                
+                # Crear frame para cada archivo
+                file_frame = Frame(scrollable_frame, bg="white", relief=SOLID, borderwidth=1)
+                file_frame.pack(fill=X, padx=5, pady=3)
+                
+                # Checkbox
+                var = BooleanVar(value=True)  # Todos seleccionados por defecto
+                checkboxes_vars[archivo] = var
+                
+                checkbox = Checkbutton(
+                    file_frame,
+                    text=archivo,
+                    variable=var,
+                    font=("Consolas", 10),
+                    bg="white",
+                    anchor=W,
+                    justify=LEFT
+                )
+                checkbox.pack(fill=X, padx=10, pady=5)
         
-        # Seleccionar todos por defecto
-        for i in range(len(archivos_lista)):
-            lista_archivos.selection_set(i)
+        # Pack canvas y scrollbar
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        # Botones de acción
+        btn_frame = Frame(dialog)
+        btn_frame.pack(pady=20)
+        
+        # Botón seleccionar todos
+        def seleccionar_todos():
+            for var in checkboxes_vars.values():
+                var.set(True)
+        
+        # Botón deseleccionar todos
+        def deseleccionar_todos():
+            for var in checkboxes_vars.values():
+                var.set(False)
+        
+        Button(btn_frame, text="✓ Seleccionar Todos", command=seleccionar_todos,
+               bg="#2196F3", fg="white", font=("Arial", 10), 
+               padx=15, pady=6, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        Button(btn_frame, text="✗ Deseleccionar Todos", command=deseleccionar_todos,
+               bg="#FF9800", fg="white", font=("Arial", 10), 
+               padx=15, pady=6, cursor="hand2").pack(side=LEFT, padx=5)
         
         resultado = [None]
         
         def aceptar():
-            seleccionados = [lista_archivos.get(i) for i in lista_archivos.curselection()]
+            seleccionados = [archivo for archivo, var in checkboxes_vars.items() if var.get()]
             if seleccionados:
                 resultado[0] = seleccionados
                 dialog.destroy()
@@ -895,16 +943,18 @@ class GitAutomationGUI:
             resultado[0] = None
             dialog.destroy()
         
-        # Botones
-        btn_frame = Frame(dialog)
-        btn_frame.pack(pady=15)
-        
         Button(btn_frame, text="✓ Agregar Seleccionados", command=aceptar, 
-               bg="#4caf50", fg="white", font=("Arial", 11, "bold"), 
-               padx=20, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+               bg="#4caf50", fg="white", font=("Arial", 12, "bold"), 
+               padx=25, pady=10, cursor="hand2").pack(side=LEFT, padx=10)
         Button(btn_frame, text="✗ Cancelar", command=cancelar, 
-               bg="#f44336", fg="white", font=("Arial", 10), 
-               padx=20, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+               bg="#f44336", fg="white", font=("Arial", 11), 
+               padx=25, pady=10, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        # Habilitar scroll con rueda del mouse
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         dialog.wait_window()
         
