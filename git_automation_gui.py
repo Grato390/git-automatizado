@@ -757,24 +757,55 @@ class GitAutomationGUI:
                 
                 # Ejecutar push en un hilo separado para no bloquear la interfaz
                 def hacer_push():
-                    # Intentar con main primero
-                    exito, salida, error = ejecutar_comando("git push origin main")
+                    # Verificar primero qué rama existe
+                    exito_rama, rama_actual, _ = ejecutar_comando("git branch --show-current")
+                    rama = rama_actual.strip() if exito_rama and rama_actual.strip() else "main"
+                    
+                    self.root.after(0, lambda: self.log(f"   📍 Rama actual: {rama}", "info"))
+                    
+                    # Verificar si hay commits para subir
+                    exito_status, status, _ = ejecutar_comando("git status")
+                    self.root.after(0, lambda: self.log(f"   📊 Estado: {status[:100] if status else 'Sin información'}", "info"))
+                    
+                    # Intentar push con la rama actual
+                    self.root.after(0, lambda: self.log(f"   🔄 Subiendo a la rama '{rama}'...", "info"))
+                    exito, salida, error = ejecutar_comando(f"git push origin {rama}")
+                    
+                    # Si falla, intentar con main
+                    if not exito:
+                        self.root.after(0, lambda: self.log("   ⚠ Intentando con 'main'...", "warning"))
+                        exito, salida, error = ejecutar_comando("git push origin main")
+                    
+                    # Si aún falla, intentar con master
                     if not exito:
                         self.root.after(0, lambda: self.log("   ⚠ Intentando con 'master'...", "warning"))
-                        self.root.update()
                         exito, salida, error = ejecutar_comando("git push origin master")
+                    
+                    # Mostrar salida completa para debugging
+                    if salida:
+                        self.root.after(0, lambda: self.log(f"   📤 Salida: {salida[:300]}", "info"))
+                    if error:
+                        self.root.after(0, lambda: self.log(f"   ⚠ Error: {error[:300]}", "warning"))
                     
                     # Actualizar interfaz desde el hilo principal
                     if exito:
+                        # Verificar que realmente se subió
+                        exito_verificar, remoto_info, _ = ejecutar_comando("git remote -v")
                         self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
                         self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
+                        if remoto_info:
+                            self.root.after(0, lambda: self.log(f"   🔗 Repositorio: {remoto_info.split()[1] if len(remoto_info.split()) > 1 else 'N/A'}", "info"))
                         self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet."))
                     else:
                         self.root.after(0, lambda: self.log("   ✗ Error al subir a GitHub", "error"))
+                        mensaje_error = f"No se pudo subir a GitHub.\n\n"
                         if error:
-                            self.root.after(0, lambda: self.log(f"   Detalles: {error[:200]}", "error"))
+                            mensaje_error += f"Error: {error[:300]}\n\n"
+                        if salida:
+                            mensaje_error += f"Salida: {salida[:200]}\n\n"
+                        mensaje_error += "Verifica:\n• Tu conexión a internet\n• Tus credenciales de GitHub\n• Que el repositorio remoto esté configurado correctamente"
                         self.root.after(0, lambda: self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info"))
-                        self.root.after(0, lambda: messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub."))
+                        self.root.after(0, lambda: messagebox.showerror("Error", mensaje_error))
                 
                 # Iniciar el push en un hilo separado
                 thread = threading.Thread(target=hacer_push, daemon=True)
