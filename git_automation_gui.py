@@ -750,19 +750,32 @@ class GitAutomationGUI:
             
             if respuesta:
                 self.log("\n☁️ PASO 3: Subiendo a GitHub...", "info")
+                self.log("   ⏳ Por favor espera, esto puede tardar unos segundos...", "info")
                 self.log("   Comando: git push origin main", "info")
+                self.root.update()  # Actualizar la interfaz para mostrar el mensaje
                 
-                exito, _, _ = ejecutar_comando("git push origin main")
+                # Intentar con main primero
+                exito, salida, error = ejecutar_comando("git push origin main")
                 if not exito:
-                    exito, _, _ = ejecutar_comando("git push origin master")
+                    self.log("   ⚠ Intentando con 'master'...", "warning")
+                    self.root.update()
+                    exito, salida, error = ejecutar_comando("git push origin master")
+                
                 if exito:
-                    self.log("   ✓ Cambios subidos a GitHub", "success")
+                    self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success")
+                    self.log("   ✓ Tu código ya está disponible en internet", "success")
+                    messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.")
                 else:
-                    self.log("   ⚠ No se pudo subir", "warning")
+                    self.log("   ✗ Error al subir a GitHub", "error")
+                    if error:
+                        self.log(f"   Detalles: {error[:200]}", "error")
+                    self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info")
+                    messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub.")
             else:
                 self.log("\n⚠ Push cancelado por el usuario", "warning")
         else:
-            self.log("\n⚠ No hay repositorio configurado", "warning")
+            self.log("\n⚠ No hay repositorio configurado para subir", "warning")
+            self.log("   💡 Puedes configurar GitHub después si lo necesitas", "info")
         
         self.log("\n" + "="*60, "success")
         self.log("✅ ¡COMPLETADO!", "success")
@@ -990,15 +1003,35 @@ class GitAutomationGUI:
                         if config.get('url_remoto'):
                             respuesta_push = messagebox.askyesno(
                                 "¿Subir a GitHub?",
-                                "¿Deseas subir estos cambios a GitHub?"
+                                f"¿Deseas subir estos cambios a GitHub?\n\nRepositorio: {config['url_remoto']}"
                             )
                             if respuesta_push:
                                 self.log("\n☁️ Subiendo a GitHub...", "info")
-                                exito, _, _ = ejecutar_comando("git push origin main")
+                                self.log("   ⏳ Por favor espera, esto puede tardar unos segundos...", "info")
+                                self.log("   Comando: git push origin main", "info")
+                                self.root.update()  # Actualizar la interfaz para mostrar el mensaje
+                                
+                                # Intentar con main primero
+                                exito, salida, error = ejecutar_comando("git push origin main")
                                 if not exito:
-                                    exito, _, _ = ejecutar_comando("git push origin master")
+                                    self.log("   ⚠ Intentando con 'master'...", "warning")
+                                    self.root.update()
+                                    exito, salida, error = ejecutar_comando("git push origin master")
+                                
                                 if exito:
-                                    self.log("✓ Cambios subidos", "success")
+                                    self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success")
+                                    self.log("   ✓ Tu código ya está disponible en internet", "success")
+                                    messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.")
+                                else:
+                                    self.log("   ✗ Error al subir a GitHub", "error")
+                                    if error:
+                                        self.log(f"   Detalles: {error[:200]}", "error")
+                                    self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info")
+                                    messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub.")
+                            else:
+                                self.log("\n⚠ Push cancelado por el usuario", "warning")
+                        else:
+                            self.log("\n⚠ No hay repositorio configurado para subir", "warning")
                     else:
                         self.log(f"✗ Error: {error}", "error")
             
