@@ -11,9 +11,22 @@ Sistema **100% automático** para Git. Un solo clic y hace TODO.
 
 ## 🚀 Uso
 
-### Primera vez
+### ⭐ MÉTODO MÁS FÁCIL: Usar el .EXE
 
-1. **Doble clic en `ejecutar.bat`**
+**¡Ya está creado y listo!** Solo haz doble clic en:
+- **`dist\Git-Automation.exe`**
+
+**Ventajas del .exe:**
+- ✅ No necesitas Python instalado
+- ✅ No necesitas activar nada
+- ✅ Solo doble clic y funciona
+- ✅ Puedes copiarlo a cualquier lugar
+- ✅ Puedes subirlo a GitHub y compartirlo
+
+### Método alternativo: Scripts
+
+1. **Doble clic en `ejecutar.vbs`** (recomendado - sin mostrar consola)
+   O si prefieres: **Doble clic en `ejecutar.bat`**
 2. **Encuentra la URL de tu repositorio en GitHub:**
    - Ve a tu repositorio en GitHub
    - Haz clic en el botón verde **"Code"** (arriba a la derecha)
@@ -38,16 +51,35 @@ https://github.com/Grato390/git-automatizado.git
 
 ```
 automatizar git/
-├── git_automation_gui.py  # Script principal (GUI)
-├── ejecutar.bat          # Ejecutar (doble clic) 🚀
-├── requirements.txt      # Dependencias
-├── .gitignore           # Archivos a ignorar
-└── README.md            # Este archivo
+├── dist/
+│   └── Git-Automation.exe   # ⭐ ARCHIVO .EXE (¡Ya está creado!)
+├── git_automation_gui.py     # Script principal (GUI)
+├── ejecutar.vbs              # Ejecutar sin consola (recomendado)
+├── ejecutar.bat              # Ejecutar (doble clic)
+├── crear_exe.bat             # Crear .exe (si necesitas regenerarlo)
+├── requirements.txt          # Dependencias
+├── .gitignore               # Archivos a ignorar
+└── README.md                # Este archivo
 ```
 
 ## ⚙️ Instalación (Ya está hecho)
 
-Todo ya está instalado y listo. Solo ejecuta `ejecutar.bat`
+Todo ya está instalado y listo. Solo ejecuta `ejecutar.vbs` o `ejecutar.bat`
+
+## 📦 Crear Archivo .EXE (Opcional)
+
+Si quieres crear un archivo .exe para distribuir fácilmente:
+
+1. **Doble clic en `crear_exe.bat`**
+2. Espera a que termine (puede tardar 1-2 minutos)
+3. El archivo `.exe` estará en la carpeta `dist\`
+4. Puedes copiar ese `.exe` a cualquier lugar y ejecutarlo directamente
+
+**Ventajas del .exe:**
+- ✅ No necesitas Python instalado
+- ✅ No necesitas activar el entorno virtual
+- ✅ Solo haz doble clic y funciona
+- ✅ Puedes compartirlo fácilmente
 
 ## 🎯 ¿Qué hace automáticamente?
 

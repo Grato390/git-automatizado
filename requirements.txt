@@ -1,2 +1,3 @@
 # Dependencias para el sistema de automatización de Git
 colorama==0.4.6
+pyinstaller==6.3.0

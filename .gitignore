@@ -10,6 +10,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# PyInstaller
+build/
+*.spec
+# dist/  # Descomenta esta línea si NO quieres subir el .exe
+
 # IDE
 .vscode/
 .idea/
@@ -20,5 +25,7 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Configuración local
-config.json
+# Configuración local (se crean automáticamente)
+git_config.json
+historial_proyectos.txt
+proyectos_guardados.json

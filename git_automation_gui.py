@@ -347,75 +347,75 @@ class GitAutomationGUI:
         )
         btn_seleccionar.pack(side=LEFT)
         
-        # Si es primera vez, mostrar configuración de GitHub
+        # Botón para continuar (siempre visible)
+        btn_continuar = Button(
+            self.btn_frame,
+            text="🚀 CONTINUAR",
+            command=self.continuar_o_configurar,
+            bg="#4caf50",
+            fg="white",
+            font=("Arial", 14, "bold"),
+            padx=40,
+            pady=15,
+            cursor="hand2",
+            relief=RAISED,
+            borderwidth=3
+        )
+        btn_continuar.pack(pady=20)
+        
+        Label(
+            self.btn_frame,
+            text="💡 Haz clic en el botón verde de arriba para continuar",
+            font=("Arial", 10),
+            fg="#666"
+        ).pack(pady=(0, 10))
+        
+        # Enter en el entry también continúa
+        ruta_entry.bind("<Return>", lambda e: self.continuar_o_configurar())
+    
+    def continuar_o_configurar(self):
+        """Continúa directamente a la vista principal"""
+        ruta = self.ruta_proyecto.get().strip()
+        if not ruta:
+            messagebox.showerror("Error", "Debes seleccionar la carpeta de tu proyecto")
+            return
+        
+        if not os.path.exists(ruta):
+            messagebox.showerror("Error", "La carpeta seleccionada no existe")
+            return
+        
+        if not os.path.isdir(ruta):
+            messagebox.showerror("Error", "La ruta seleccionada no es una carpeta válida")
+            return
+        
+        self.ruta_proyecto_usuario = ruta
+        os.chdir(ruta)
+        
+        # Guardar proyecto en historial
+        guardar_proyecto(ruta)
+        
+        # Si es primera vez, hacer configuración inicial automáticamente
         if es_primera_vez():
-            # Frame de URL
-            url_frame = ttk.LabelFrame(self.btn_frame, text="🔗 PASO 2: Conectar con GitHub (Opcional)", padding="15")
-            url_frame.pack(pady=10, fill=X)
+            # Configurar Git automáticamente sin preguntar
+            self.log("\n🔧 Configurando Git automáticamente...", "info")
+            configurar_git_automatico()
             
-            Label(
-                url_frame,
-                text="💡 ¿Qué es esto? Conecta tu proyecto con GitHub para guardar tus cambios en internet",
-                font=("Arial", 9, "italic"),
-                fg="#666",
-                justify=LEFT
-            ).pack(anchor=W, pady=(0, 10))
+            # Inicializar Git si no existe
+            if not os.path.exists(".git"):
+                self.log("📦 Inicializando repositorio Git...", "info")
+                ejecutar_comando("git init")
+                self.log("✓ Repositorio inicializado", "success")
             
-            instrucciones_text = (
-                "📋 Cómo obtener la URL:\n"
-                "   1. Ve a tu repositorio en GitHub\n"
-                "   2. Haz clic en el botón verde 'Code' (arriba a la derecha)\n"
-                "   3. Selecciona la pestaña 'HTTPS'\n"
-                "   4. Copia la URL que aparece\n"
-                "\n"
-                "📌 Ejemplo: https://github.com/Grato390/git-automatizado.git"
-            )
-            
-            Label(
-                url_frame,
-                text=instrucciones_text,
-                font=("Arial", 8),
-                fg="#555",
-                justify=LEFT
-            ).pack(anchor=W, pady=(0, 10))
-            
-            ttk.Label(url_frame, text="Pega la URL aquí (opcional):", font=("Arial", 10, "bold")).pack(anchor=W, pady=(0, 5))
-            
-            url_entry = ttk.Entry(url_frame, textvariable=self.url_remoto, width=55, font=("Consolas", 10))
-            url_entry.pack(fill=X, pady=5)
-            url_entry.insert(0, "https://github.com/usuario/repositorio.git")
-            url_entry.bind("<FocusIn>", lambda e: url_entry.delete(0, END) if url_entry.get() == "https://github.com/usuario/repositorio.git" else None)
-            
-            # Botón principal
-            btn_auto = Button(
-                self.btn_frame,
-                text="🚀 CONFIGURAR Y CONTINUAR",
-                command=self.hacer_todo_automatico,
-                bg="#4caf50",
-                fg="white",
-                font=("Arial", 12, "bold"),
-                padx=20,
-                pady=12,
-                cursor="hand2"
-            )
-            btn_auto.pack(pady=15)
-        else:
-            # Si ya está configurado, solo necesita seleccionar carpeta
-            btn_continuar = Button(
-                self.btn_frame,
-                text="✅ CONTINUAR CON ESTA CARPETA",
-                command=self.continuar_con_carpeta,
-                bg="#4caf50",
-                fg="white",
-                font=("Arial", 11, "bold"),
-                padx=20,
-                pady=10,
-                cursor="hand2"
-            )
-            btn_continuar.pack(pady=15)
-            
-            # Enter en el entry también continúa
-            ruta_entry.bind("<Return>", lambda e: self.continuar_con_carpeta())
+            # Guardar configuración
+            guardar_configuracion({
+                'configurado': True,
+                'url_remoto': None,
+                'ruta_proyecto': ruta
+            })
+        
+        self.log(f"\n✓ Carpeta seleccionada: {ruta}", "success")
+        self.log("✓ Proyecto guardado en historial", "success")
+        self.mostrar_interfaz_principal()
     
     def continuar_con_carpeta(self):
         """Continúa con la carpeta seleccionada"""
