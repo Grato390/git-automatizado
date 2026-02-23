@@ -400,9 +400,10 @@ class GitAutomationGUI:
         info_frame.pack(pady=(0, 15), fill=X)
         
         info_text = (
-            "💡 ¿Qué hace cada botón?\n"
-            "• Botón AZUL: Agrega, guarda y sube todos tus cambios\n"
-            "• Botón NARANJA: Solo prepara tus archivos (no los guarda todavía)"
+            "💡 Este botón hace TODO automáticamente:\n"
+            "• Agrega TODOS los archivos de tu proyecto\n"
+            "• Guarda los cambios con un mensaje (te preguntará)\n"
+            "• Sube todo a GitHub (si confirmas)"
         )
         
         Label(
@@ -417,32 +418,17 @@ class GitAutomationGUI:
         # UN SOLO BOTÓN PRINCIPAL - hace todo
         btn_principal = Button(
             self.btn_frame,
-            text="🔄 ACTUALIZAR TODO\n(Agregar + Guardar + Subir)",
+            text="🔄 TODOS LOS ARCHIVOS\n(Agregar + Guardar + Subir)",
             command=self.actualizar_automatico,
             bg="#2196F3",
             fg="white",
-            font=("Arial", 11, "bold"),
-            padx=30,
-            pady=12,
+            font=("Arial", 12, "bold"),
+            padx=40,
+            pady=15,
             cursor="hand2",
             justify=CENTER
         )
-        btn_principal.pack(pady=10)
-        
-        # Botón secundario para solo agregar
-        btn_add = Button(
-            self.btn_frame,
-            text="➕ Solo Preparar Archivos\n(No guarda, solo los marca)",
-            command=self.solo_agregar,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 10),
-            padx=20,
-            pady=8,
-            cursor="hand2",
-            justify=CENTER
-        )
-        btn_add.pack(pady=5)
+        btn_principal.pack(pady=15)
     
     
     def actualizar_automatico(self):
@@ -483,11 +469,15 @@ class GitAutomationGUI:
         self.log("   ✓ Archivos agregados", "success")
         self.log(f"   📁 {len(salida.strip().split(chr(10)))} archivo(s) preparado(s)", "info")
         
-        # PASO 2: Commit automático con mensaje por defecto
-        from datetime import datetime
-        mensaje = f"Actualización automática - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        
+        # PASO 2: Commit con mensaje del usuario
         self.log("\n💾 PASO 2: Guardando cambios...", "info")
+        self.log("   Necesitamos un mensaje para guardar tus cambios", "info")
+        
+        mensaje = self.pedir_mensaje_commit()
+        if not mensaje:
+            self.log("   ⚠ Guardado cancelado", "warning")
+            return
+        
         self.log(f"   Mensaje: {mensaje}", "info")
         self.log("   Comando: git commit -m \"mensaje\"", "info")
         
@@ -526,37 +516,59 @@ class GitAutomationGUI:
         self.log("✅ ¡COMPLETADO!", "success")
         self.log("="*60, "success")
     
-    def solo_agregar(self):
-        """Solo agrega cambios sin commit/push"""
-        # Verificar que hay una carpeta seleccionada
-        if not self.ruta_proyecto_usuario:
-            ruta = self.ruta_proyecto.get().strip()
-            if not ruta or not os.path.exists(ruta):
-                messagebox.showerror("Error", "Debes seleccionar la carpeta de tu proyecto primero")
-                self.seleccionar_carpeta_proyecto_inicio()
-                return
-            self.ruta_proyecto_usuario = ruta
+    def pedir_mensaje_commit(self):
+        """Pide el mensaje del commit"""
+        dialog = Toplevel(self.root)
+        dialog.title("📝 Mensaje del Commit")
+        dialog.geometry("550x220")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
         
-        os.chdir(self.ruta_proyecto_usuario)
+        # Centrar ventana
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (550 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (220 // 2)
+        dialog.geometry(f"550x220+{x}+{y}")
         
-        self.log("\n" + "="*60, "info")
-        self.log("➕ AGREGANDO CAMBIOS (Solo preparar archivos)", "info")
-        self.log("="*60, "info")
-        self.log("\n📋 ¿Qué hace esto?", "info")
-        self.log("   Marca tus archivos modificados para guardarlos después", "info")
-        self.log("   Comando: git add .", "info")
-        self.log("   (No los guarda todavía, solo los prepara)", "info")
+        mensaje_var = StringVar()
+        mensaje_var.set(f"Actualización - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         
-        ejecutar_comando("git add .")
+        Label(dialog, text="📝 Escribe el mensaje para tu commit:", font=("Arial", 12, "bold")).pack(pady=(20, 10))
         
-        exito, salida, _ = ejecutar_comando("git status --porcelain")
-        if salida.strip():
-            self.log(f"\n   ✓ ¡Archivos preparados! ({len(salida.strip().split(chr(10)))} archivo(s))", "success")
-            self.log("\n💡 Siguiente paso: Usa el botón 'ACTUALIZAR TODO' para guardar y subir", "info")
-        else:
-            self.log("\n   ⚠ No hay cambios para agregar", "warning")
+        Label(dialog, text="Ejemplo: 'Agregué nueva funcionalidad' o 'Corregí errores'", 
+              font=("Arial", 9), fg="#666").pack(pady=(0, 5))
         
-        self.log("\n" + "="*60, "info")
+        entry = Entry(dialog, textvariable=mensaje_var, width=60, font=("Arial", 11))
+        entry.pack(pady=10, padx=20)
+        entry.select_range(0, END)
+        entry.focus()
+        
+        resultado = [None]
+        
+        def aceptar():
+            resultado[0] = mensaje_var.get().strip()
+            if not resultado[0]:
+                resultado[0] = f"Actualización - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            dialog.destroy()
+        
+        def cancelar():
+            resultado[0] = None
+            dialog.destroy()
+        
+        btn_frame = Frame(dialog)
+        btn_frame.pack(pady=10)
+        
+        Button(btn_frame, text="✓ Aceptar", command=aceptar, bg="#4caf50", fg="white", 
+               font=("Arial", 11, "bold"), padx=20, pady=6, cursor="hand2").pack(side=LEFT, padx=5)
+        Button(btn_frame, text="✗ Cancelar", command=cancelar, bg="#f44336", fg="white",
+               font=("Arial", 10), padx=20, pady=6, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        entry.bind("<Return>", lambda e: aceptar())
+        entry.bind("<Escape>", lambda e: cancelar())
+        
+        dialog.wait_window()
+        return resultado[0]
 
 
 def main():
