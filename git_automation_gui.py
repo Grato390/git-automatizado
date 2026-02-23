@@ -25,6 +25,7 @@ else:
 CONFIG_FILE = "git_config.json"
 HISTORIAL_FILE = "historial_proyectos.txt"
 PROYECTOS_FILE = "proyectos_guardados.json"
+HISTORIAL_OPERACIONES = "historial_operaciones.txt"
 
 
 def ejecutar_comando(comando):
@@ -173,6 +174,37 @@ def obtener_ultimo_proyecto():
     if proyectos_ordenados:
         return proyectos_ordenados[0][1]  # Retorna datos del más reciente
     return None
+
+
+def guardar_operacion(operacion, detalles=""):
+    """Guarda una operación en el historial"""
+    try:
+        ruta_actual = os.getcwd()
+        with open(HISTORIAL_OPERACIONES, 'a', encoding='utf-8') as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {operacion}\n")
+            if detalles:
+                f.write(f"  Detalles: {detalles}\n")
+            f.write(f"  Proyecto: {ruta_actual}\n")
+            f.write("\n")
+    except:
+        pass
+
+
+def obtener_ramas():
+    """Obtiene todas las ramas locales"""
+    exito, salida, _ = ejecutar_comando("git branch")
+    if exito and salida:
+        ramas = [r.strip().replace('*', '').strip() for r in salida.split('\n') if r.strip()]
+        return ramas
+    return []
+
+
+def obtener_rama_actual():
+    """Obtiene la rama actual"""
+    exito, rama, _ = ejecutar_comando("git branch --show-current")
+    if exito and rama.strip():
+        return rama.strip()
+    return "master"
 
 
 class GitAutomationGUI:
@@ -719,8 +751,10 @@ class GitAutomationGUI:
             self.log("   ⚠ No hay cambios nuevos", "warning")
             return
         
+        num_archivos = len(salida.strip().split(chr(10)))
         self.log("   ✓ Archivos agregados", "success")
-        self.log(f"   📁 {len(salida.strip().split(chr(10)))} archivo(s) preparado(s)", "info")
+        self.log(f"   📁 {num_archivos} archivo(s) preparado(s)", "info")
+        guardar_operacion(f"Archivos agregados (todos)", f"{num_archivos} archivo(s)")
         
         # PASO 2: Commit con mensaje del usuario
         self.log("\n💾 PASO 2: Guardando cambios...", "info")
@@ -737,29 +771,36 @@ class GitAutomationGUI:
         exito, _, error = ejecutar_comando(f'git commit -m "{mensaje}"')
         if exito:
             self.log("   ✓ Cambios guardados", "success")
+            guardar_operacion(f"Commit realizado", f"Mensaje: {mensaje}")
         else:
             self.log(f"   ✗ Error: {error}", "error")
             return
         
-        # PASO 3: Preguntar si hacer push
+        # PASO 3: Seleccionar rama y preguntar si hacer push
         config = cargar_configuracion()
         if config.get('url_remoto'):
+            # Seleccionar o crear rama
+            rama_seleccionada = self.seleccionar_o_crear_rama()
+            if not rama_seleccionada:
+                self.log("   ⚠ Operación cancelada", "warning")
+                return
+            
+            self.log(f"   📍 Rama seleccionada: {rama_seleccionada}", "info")
+            
             respuesta = messagebox.askyesno(
                 "¿Subir a GitHub?",
-                f"¿Deseas subir los cambios a GitHub?\n\nRepositorio: {config['url_remoto']}"
+                f"¿Deseas subir los cambios a GitHub?\n\nRama: {rama_seleccionada}\nRepositorio: {config['url_remoto']}"
             )
             
             if respuesta:
                 self.log("\n☁️ PASO 3: Subiendo a GitHub...", "info")
                 self.log("   ⏳ Por favor espera, esto puede tardar unos segundos...", "info")
-                self.log("   Comando: git push origin main", "info")
+                self.log(f"   Comando: git push origin {rama_seleccionada}", "info")
                 self.root.update()  # Actualizar la interfaz para mostrar el mensaje
                 
                 # Ejecutar push en un hilo separado para no bloquear la interfaz
                 def hacer_push():
-                    # Verificar primero qué rama existe
-                    exito_rama, rama_actual, _ = ejecutar_comando("git branch --show-current")
-                    rama = rama_actual.strip() if exito_rama and rama_actual.strip() else "main"
+                    rama = rama_seleccionada
                     
                     self.root.after(0, lambda: self.log(f"   📍 Rama actual detectada: {rama}", "info"))
                     
@@ -814,6 +855,7 @@ class GitAutomationGUI:
                         self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
                         self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
                         self.root.after(0, lambda: self.log("   💡 Recarga tu página de GitHub para ver los cambios", "info"))
+                        guardar_operacion(f"Push realizado a GitHub", f"Rama: {rama}, Repositorio: {config.get('url_remoto', 'N/A')}")
                         self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.\n\nRecarga tu página de GitHub para ver los cambios."))
                     else:
                         # Mostrar error completo
@@ -905,6 +947,110 @@ class GitAutomationGUI:
         
         dialog.wait_window()
         return resultado[0]
+    
+    def seleccionar_o_crear_rama(self):
+        """Permite seleccionar una rama existente o crear una nueva"""
+        ramas = obtener_ramas()
+        rama_actual = obtener_rama_actual()
+        
+        dialog = Toplevel(self.root)
+        dialog.title("🌿 Seleccionar o Crear Rama")
+        dialog.geometry("500x400")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Centrar ventana
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (400 // 2)
+        dialog.geometry(f"500x400+{x}+{y}")
+        
+        resultado = [None]
+        
+        Label(dialog, text="🌿 Selecciona una rama o crea una nueva:", 
+              font=("Arial", 12, "bold")).pack(pady=(20, 10))
+        
+        # Frame para ramas existentes
+        if ramas:
+            Label(dialog, text="Ramas existentes:", font=("Arial", 10, "bold")).pack(pady=(0, 5))
+            
+            frame_ramas = Frame(dialog)
+            frame_ramas.pack(fill=BOTH, expand=True, padx=20, pady=10)
+            
+            scrollbar = Scrollbar(frame_ramas)
+            scrollbar.pack(side=RIGHT, fill=Y)
+            
+            lista_ramas = Listbox(frame_ramas, font=("Consolas", 10), yscrollcommand=scrollbar.set)
+            lista_ramas.pack(side=LEFT, fill=BOTH, expand=True)
+            scrollbar.config(command=lista_ramas.yview)
+            
+            for rama in ramas:
+                lista_ramas.insert(END, rama)
+                if rama == rama_actual:
+                    lista_ramas.selection_set(END)
+            
+            Label(dialog, text="O crea una nueva rama:", font=("Arial", 10, "bold")).pack(pady=(10, 5))
+        else:
+            Label(dialog, text="No hay ramas. Creando rama 'master' por defecto...", 
+                  font=("Arial", 9), fg="#666").pack(pady=10)
+            lista_ramas = None
+        
+        # Entry para nueva rama
+        nueva_rama_var = StringVar()
+        entry_nueva = Entry(dialog, textvariable=nueva_rama_var, width=40, font=("Arial", 10))
+        entry_nueva.pack(pady=10, padx=20)
+        entry_nueva.insert(0, "nombre-de-la-rama")
+        entry_nueva.bind("<FocusIn>", lambda e: entry_nueva.delete(0, END) if entry_nueva.get() == "nombre-de-la-rama" else None)
+        
+        def usar_existente():
+            if lista_ramas and lista_ramas.curselection():
+                seleccionada = lista_ramas.get(lista_ramas.curselection()[0])
+                resultado[0] = seleccionada
+                dialog.destroy()
+            else:
+                messagebox.showwarning("Advertencia", "Selecciona una rama de la lista")
+        
+        def crear_nueva():
+            nueva_rama = nueva_rama_var.get().strip()
+            if nueva_rama and nueva_rama != "nombre-de-la-rama":
+                # Crear la rama
+                exito, _, error = ejecutar_comando(f'git checkout -b "{nueva_rama}"')
+                if exito:
+                    resultado[0] = nueva_rama
+                    guardar_operacion(f"Rama creada: {nueva_rama}")
+                    dialog.destroy()
+                else:
+                    messagebox.showerror("Error", f"No se pudo crear la rama.\n\nError: {error[:200]}")
+            else:
+                messagebox.showwarning("Advertencia", "Escribe un nombre para la nueva rama")
+        
+        def usar_actual():
+            resultado[0] = rama_actual if rama_actual else "master"
+            dialog.destroy()
+        
+        btn_frame = Frame(dialog)
+        btn_frame.pack(pady=15)
+        
+        if ramas:
+            Button(btn_frame, text="✓ Usar Seleccionada", command=usar_existente,
+                   bg="#2196F3", fg="white", font=("Arial", 10, "bold"), 
+                   padx=15, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        Button(btn_frame, text="➕ Crear Nueva", command=crear_nueva,
+               bg="#FF9800", fg="white", font=("Arial", 10, "bold"), 
+               padx=15, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        Button(btn_frame, text="✓ Usar Actual", command=usar_actual,
+               bg="#4caf50", fg="white", font=("Arial", 10, "bold"), 
+               padx=15, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        Button(btn_frame, text="✗ Cancelar", command=lambda: dialog.destroy(),
+               bg="#f44336", fg="white", font=("Arial", 10), 
+               padx=15, pady=8, cursor="hand2").pack(side=LEFT, padx=5)
+        
+        dialog.wait_window()
+        return resultado[0] if resultado[0] else rama_actual
     
     def seleccionar_archivos_especificos(self):
         """Permite seleccionar archivos específicos para agregar con checkboxes"""
@@ -1054,6 +1200,7 @@ class GitAutomationGUI:
                 ejecutar_comando(f'git add "{archivo}"')
             
             self.log("\n✓ Archivos agregados", "success")
+            guardar_operacion(f"Archivos agregados (específicos)", f"{len(resultado[0])} archivo(s): {', '.join(resultado[0][:5])}{'...' if len(resultado[0]) > 5 else ''}")
             
             # Preguntar si hacer commit
             respuesta = messagebox.askyesno(
@@ -1068,40 +1215,52 @@ class GitAutomationGUI:
                     exito, _, error = ejecutar_comando(f'git commit -m "{mensaje}"')
                     if exito:
                         self.log("✓ Cambios guardados", "success")
+                        guardar_operacion(f"Commit realizado (archivos específicos)", f"Mensaje: {mensaje}")
                         
                         # Preguntar push
                         config = cargar_configuracion()
                         if config.get('url_remoto'):
+                            # Seleccionar o crear rama
+                            rama_seleccionada = self.seleccionar_o_crear_rama()
+                            if not rama_seleccionada:
+                                self.log("   ⚠ Operación cancelada", "warning")
+                                return
+                            
+                            self.log(f"   📍 Rama seleccionada: {rama_seleccionada}", "info")
+                            
                             respuesta_push = messagebox.askyesno(
                                 "¿Subir a GitHub?",
-                                f"¿Deseas subir estos cambios a GitHub?\n\nRepositorio: {config['url_remoto']}"
+                                f"¿Deseas subir estos cambios a GitHub?\n\nRama: {rama_seleccionada}\nRepositorio: {config['url_remoto']}"
                             )
                             if respuesta_push:
                                 self.log("\n☁️ Subiendo a GitHub...", "info")
                                 self.log("   ⏳ Por favor espera, esto puede tardar unos segundos...", "info")
-                                self.log("   Comando: git push origin main", "info")
+                                self.log(f"   Comando: git push origin {rama_seleccionada}", "info")
                                 self.root.update()  # Actualizar la interfaz para mostrar el mensaje
                                 
                                 # Ejecutar push en un hilo separado para no bloquear la interfaz
                                 def hacer_push_archivos():
-                                    # Intentar con main primero
-                                    exito, salida, error = ejecutar_comando("git push origin main")
-                                    if not exito:
+                                    rama = rama_seleccionada
+                                    exito, salida, error = ejecutar_comando(f"git push origin {rama} 2>&1")
+                                    
+                                    # Si falla, intentar con master
+                                    if not exito and rama != "master":
                                         self.root.after(0, lambda: self.log("   ⚠ Intentando con 'master'...", "warning"))
                                         self.root.update()
-                                        exito, salida, error = ejecutar_comando("git push origin master")
+                                        exito, salida, error = ejecutar_comando("git push origin master 2>&1")
                                     
                                     # Actualizar interfaz desde el hilo principal
                                     if exito:
                                         self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
                                         self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
+                                        guardar_operacion(f"Push realizado a GitHub (archivos específicos)", f"Rama: {rama}, Repositorio: {config.get('url_remoto', 'N/A')}")
                                         self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet."))
                                     else:
                                         self.root.after(0, lambda: self.log("   ✗ Error al subir a GitHub", "error"))
                                         if error:
-                                            self.root.after(0, lambda: self.log(f"   Detalles: {error[:200]}", "error"))
+                                            self.root.after(0, lambda: self.log(f"   Detalles: {error[:400]}", "error"))
                                         self.root.after(0, lambda: self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info"))
-                                        self.root.after(0, lambda: messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub."))
+                                        self.root.after(0, lambda: messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:300] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub."))
                                 
                                 # Iniciar el push en un hilo separado
                                 thread_push = threading.Thread(target=hacer_push_archivos, daemon=True)
