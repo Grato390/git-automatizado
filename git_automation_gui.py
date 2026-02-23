@@ -9,6 +9,7 @@ import os
 import subprocess
 import json
 import sys
+import threading
 from datetime import datetime
 from tkinter import *
 from tkinter import ttk, scrolledtext, messagebox, filedialog
@@ -754,23 +755,38 @@ class GitAutomationGUI:
                 self.log("   Comando: git push origin main", "info")
                 self.root.update()  # Actualizar la interfaz para mostrar el mensaje
                 
-                # Intentar con main primero
-                exito, salida, error = ejecutar_comando("git push origin main")
-                if not exito:
-                    self.log("   ⚠ Intentando con 'master'...", "warning")
-                    self.root.update()
-                    exito, salida, error = ejecutar_comando("git push origin master")
+                # Ejecutar push en un hilo separado para no bloquear la interfaz
+                def hacer_push():
+                    # Intentar con main primero
+                    exito, salida, error = ejecutar_comando("git push origin main")
+                    if not exito:
+                        self.root.after(0, lambda: self.log("   ⚠ Intentando con 'master'...", "warning"))
+                        self.root.update()
+                        exito, salida, error = ejecutar_comando("git push origin master")
+                    
+                    # Actualizar interfaz desde el hilo principal
+                    if exito:
+                        self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
+                        self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
+                        self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet."))
+                    else:
+                        self.root.after(0, lambda: self.log("   ✗ Error al subir a GitHub", "error"))
+                        if error:
+                            self.root.after(0, lambda: self.log(f"   Detalles: {error[:200]}", "error"))
+                        self.root.after(0, lambda: self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info"))
+                        self.root.after(0, lambda: messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub."))
                 
-                if exito:
-                    self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success")
-                    self.log("   ✓ Tu código ya está disponible en internet", "success")
-                    messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.")
-                else:
-                    self.log("   ✗ Error al subir a GitHub", "error")
-                    if error:
-                        self.log(f"   Detalles: {error[:200]}", "error")
-                    self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info")
-                    messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub.")
+                # Iniciar el push en un hilo separado
+                thread = threading.Thread(target=hacer_push, daemon=True)
+                thread.start()
+                
+                # Actualizar la interfaz periódicamente mientras se ejecuta
+                def actualizar_interfaz():
+                    if thread.is_alive():
+                        self.root.update()
+                        self.root.after(100, actualizar_interfaz)
+                
+                actualizar_interfaz()
             else:
                 self.log("\n⚠ Push cancelado por el usuario", "warning")
         else:
@@ -1011,23 +1027,38 @@ class GitAutomationGUI:
                                 self.log("   Comando: git push origin main", "info")
                                 self.root.update()  # Actualizar la interfaz para mostrar el mensaje
                                 
-                                # Intentar con main primero
-                                exito, salida, error = ejecutar_comando("git push origin main")
-                                if not exito:
-                                    self.log("   ⚠ Intentando con 'master'...", "warning")
-                                    self.root.update()
-                                    exito, salida, error = ejecutar_comando("git push origin master")
+                                # Ejecutar push en un hilo separado para no bloquear la interfaz
+                                def hacer_push_archivos():
+                                    # Intentar con main primero
+                                    exito, salida, error = ejecutar_comando("git push origin main")
+                                    if not exito:
+                                        self.root.after(0, lambda: self.log("   ⚠ Intentando con 'master'...", "warning"))
+                                        self.root.update()
+                                        exito, salida, error = ejecutar_comando("git push origin master")
+                                    
+                                    # Actualizar interfaz desde el hilo principal
+                                    if exito:
+                                        self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
+                                        self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
+                                        self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet."))
+                                    else:
+                                        self.root.after(0, lambda: self.log("   ✗ Error al subir a GitHub", "error"))
+                                        if error:
+                                            self.root.after(0, lambda: self.log(f"   Detalles: {error[:200]}", "error"))
+                                        self.root.after(0, lambda: self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info"))
+                                        self.root.after(0, lambda: messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub."))
                                 
-                                if exito:
-                                    self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success")
-                                    self.log("   ✓ Tu código ya está disponible en internet", "success")
-                                    messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.")
-                                else:
-                                    self.log("   ✗ Error al subir a GitHub", "error")
-                                    if error:
-                                        self.log(f"   Detalles: {error[:200]}", "error")
-                                    self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info")
-                                    messagebox.showerror("Error", f"No se pudo subir a GitHub.\n\nError: {error[:200] if error else 'Error desconocido'}\n\nVerifica tu conexión a internet y tus credenciales de GitHub.")
+                                # Iniciar el push en un hilo separado
+                                thread_push = threading.Thread(target=hacer_push_archivos, daemon=True)
+                                thread_push.start()
+                                
+                                # Actualizar la interfaz periódicamente mientras se ejecuta
+                                def actualizar_interfaz_push():
+                                    if thread_push.is_alive():
+                                        self.root.update()
+                                        self.root.after(100, actualizar_interfaz_push)
+                                
+                                actualizar_interfaz_push()
                             else:
                                 self.log("\n⚠ Push cancelado por el usuario", "warning")
                         else:
