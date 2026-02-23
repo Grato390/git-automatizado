@@ -761,51 +761,75 @@ class GitAutomationGUI:
                     exito_rama, rama_actual, _ = ejecutar_comando("git branch --show-current")
                     rama = rama_actual.strip() if exito_rama and rama_actual.strip() else "main"
                     
-                    self.root.after(0, lambda: self.log(f"   📍 Rama actual: {rama}", "info"))
+                    self.root.after(0, lambda: self.log(f"   📍 Rama actual detectada: {rama}", "info"))
+                    
+                    # Verificar remoto
+                    exito_remoto, remoto_info, _ = ejecutar_comando("git remote -v")
+                    if remoto_info:
+                        url_remoto = remoto_info.split()[1] if len(remoto_info.split()) > 1 else "N/A"
+                        self.root.after(0, lambda: self.log(f"   🔗 Remoto: {url_remoto}", "info"))
                     
                     # Verificar si hay commits para subir
-                    exito_status, status, _ = ejecutar_comando("git status")
-                    self.root.after(0, lambda: self.log(f"   📊 Estado: {status[:100] if status else 'Sin información'}", "info"))
+                    exito_log, log_info, _ = ejecutar_comando("git log origin/" + rama + "..HEAD --oneline 2>&1")
+                    if log_info and "fatal" not in log_info.lower():
+                        num_commits = len([l for l in log_info.strip().split('\n') if l.strip()])
+                        self.root.after(0, lambda: self.log(f"   📦 {num_commits} commit(s) para subir", "info"))
+                    else:
+                        # Si no hay rama remota, verificar commits locales
+                        exito_log2, log_info2, _ = ejecutar_comando("git log --oneline -5")
+                        if log_info2:
+                            self.root.after(0, lambda: self.log("   📦 Verificando commits locales...", "info"))
                     
-                    # Intentar push con la rama actual
-                    self.root.after(0, lambda: self.log(f"   🔄 Subiendo a la rama '{rama}'...", "info"))
-                    exito, salida, error = ejecutar_comando(f"git push origin {rama}")
+                    # Intentar push con la rama actual primero
+                    self.root.after(0, lambda: self.log(f"   🔄 Intentando subir a '{rama}'...", "info"))
+                    exito, salida, error = ejecutar_comando(f"git push origin {rama} 2>&1")
+                    
+                    # Mostrar resultado inmediatamente
+                    if salida:
+                        self.root.after(0, lambda: self.log(f"   📤 Respuesta: {salida[:400]}", "info"))
+                    if error and error not in salida:
+                        self.root.after(0, lambda: self.log(f"   ⚠ Error: {error[:400]}", "warning"))
                     
                     # Si falla, intentar con main
-                    if not exito:
+                    if not exito and rama != "main":
                         self.root.after(0, lambda: self.log("   ⚠ Intentando con 'main'...", "warning"))
-                        exito, salida, error = ejecutar_comando("git push origin main")
+                        exito2, salida2, error2 = ejecutar_comando("git push origin main 2>&1")
+                        if exito2:
+                            exito, salida, error = exito2, salida2, error2
+                            if salida:
+                                self.root.after(0, lambda: self.log(f"   📤 Respuesta: {salida[:400]}", "info"))
                     
                     # Si aún falla, intentar con master
-                    if not exito:
+                    if not exito and rama != "master":
                         self.root.after(0, lambda: self.log("   ⚠ Intentando con 'master'...", "warning"))
-                        exito, salida, error = ejecutar_comando("git push origin master")
+                        exito3, salida3, error3 = ejecutar_comando("git push origin master 2>&1")
+                        if exito3:
+                            exito, salida, error = exito3, salida3, error3
+                            if salida:
+                                self.root.after(0, lambda: self.log(f"   📤 Respuesta: {salida[:400]}", "info"))
                     
-                    # Mostrar salida completa para debugging
-                    if salida:
-                        self.root.after(0, lambda: self.log(f"   📤 Salida: {salida[:300]}", "info"))
-                    if error:
-                        self.root.after(0, lambda: self.log(f"   ⚠ Error: {error[:300]}", "warning"))
-                    
-                    # Actualizar interfaz desde el hilo principal
+                    # Verificar resultado final
                     if exito:
-                        # Verificar que realmente se subió
-                        exito_verificar, remoto_info, _ = ejecutar_comando("git remote -v")
+                        # Verificar que realmente se subió consultando el remoto
                         self.root.after(0, lambda: self.log("   ✓ ¡Cambios subidos a GitHub exitosamente!", "success"))
                         self.root.after(0, lambda: self.log("   ✓ Tu código ya está disponible en internet", "success"))
-                        if remoto_info:
-                            self.root.after(0, lambda: self.log(f"   🔗 Repositorio: {remoto_info.split()[1] if len(remoto_info.split()) > 1 else 'N/A'}", "info"))
-                        self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet."))
+                        self.root.after(0, lambda: self.log("   💡 Recarga tu página de GitHub para ver los cambios", "info"))
+                        self.root.after(0, lambda: messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!\n\nTu código ya está disponible en internet.\n\nRecarga tu página de GitHub para ver los cambios."))
                     else:
-                        self.root.after(0, lambda: self.log("   ✗ Error al subir a GitHub", "error"))
-                        mensaje_error = f"No se pudo subir a GitHub.\n\n"
+                        # Mostrar error completo
+                        self.root.after(0, lambda: self.log("   ✗ ✗✗✗ ERROR AL SUBIR A GITHUB ✗✗✗", "error"))
+                        mensaje_error = "No se pudo subir a GitHub.\n\n"
                         if error:
-                            mensaje_error += f"Error: {error[:300]}\n\n"
+                            mensaje_error += f"Error completo:\n{error}\n\n"
                         if salida:
-                            mensaje_error += f"Salida: {salida[:200]}\n\n"
-                        mensaje_error += "Verifica:\n• Tu conexión a internet\n• Tus credenciales de GitHub\n• Que el repositorio remoto esté configurado correctamente"
-                        self.root.after(0, lambda: self.log("   💡 Verifica tu conexión a internet y tus credenciales", "info"))
-                        self.root.after(0, lambda: messagebox.showerror("Error", mensaje_error))
+                            mensaje_error += f"Salida:\n{salida}\n\n"
+                        mensaje_error += "Posibles causas:\n"
+                        mensaje_error += "• Problema de autenticación (necesitas configurar credenciales)\n"
+                        mensaje_error += "• La rama remota no existe\n"
+                        mensaje_error += "• Problema de conexión a internet\n"
+                        mensaje_error += "• El repositorio remoto no está configurado correctamente"
+                        self.root.after(0, lambda: self.log(f"   Detalles del error: {error[:500] if error else 'Sin detalles'}", "error"))
+                        self.root.after(0, lambda: messagebox.showerror("Error al Subir", mensaje_error))
                 
                 # Iniciar el push en un hilo separado
                 thread = threading.Thread(target=hacer_push, daemon=True)
