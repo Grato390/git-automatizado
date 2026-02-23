@@ -1,0 +1,2 @@
+# Dependencias para el sistema de automatización de Git
+colorama==0.4.6
